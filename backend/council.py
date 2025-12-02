@@ -1,8 +1,8 @@
 """3-stage LLM Council orchestration."""
 
 from typing import List, Dict, Any, Tuple
-from .openrouter import query_models_parallel, query_model
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .llm_providers import call_models_parallel, call_model, ModelConfig
+from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, TITLE_MODEL
 
 
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
@@ -18,15 +18,15 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     messages = [{"role": "user", "content": user_query}]
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await call_models_parallel(COUNCIL_MODELS, messages)
 
     # Format results
     stage1_results = []
-    for model, response in responses.items():
+    for model_config, response in responses.items():
         if response is not None:  # Only include successful responses
             stage1_results.append({
-                "model": model,
-                "response": response.get('content', '')
+                "model": model_config.display_name,
+                "response": response
             })
 
     return stage1_results
@@ -95,17 +95,16 @@ Now provide your evaluation and ranking:"""
     messages = [{"role": "user", "content": ranking_prompt}]
 
     # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    responses = await call_models_parallel(COUNCIL_MODELS, messages)
 
     # Format results
     stage2_results = []
-    for model, response in responses.items():
+    for model_config, response in responses.items():
         if response is not None:
-            full_text = response.get('content', '')
-            parsed = parse_ranking_from_text(full_text)
+            parsed = parse_ranking_from_text(response)
             stage2_results.append({
-                "model": model,
-                "ranking": full_text,
+                "model": model_config.display_name,
+                "ranking": response,
                 "parsed_ranking": parsed
             })
 
@@ -159,18 +158,18 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     messages = [{"role": "user", "content": chairman_prompt}]
 
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
+    response = await call_model(CHAIRMAN_MODEL, messages)
 
     if response is None:
         # Fallback if chairman fails
         return {
-            "model": CHAIRMAN_MODEL,
+            "model": CHAIRMAN_MODEL.display_name,
             "response": "Error: Unable to generate final synthesis."
         }
 
     return {
-        "model": CHAIRMAN_MODEL,
-        "response": response.get('content', '')
+        "model": CHAIRMAN_MODEL.display_name,
+        "response": response
     }
 
 
@@ -274,14 +273,14 @@ Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
 
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    # Use the configured title model
+    response = await call_model(TITLE_MODEL, messages, timeout=30.0)
 
     if response is None:
         # Fallback to a generic title
         return "New Conversation"
 
-    title = response.get('content', 'New Conversation').strip()
+    title = response.strip()
 
     # Clean up the title - remove quotes, limit length
     title = title.strip('"\'')

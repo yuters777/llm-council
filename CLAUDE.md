@@ -11,16 +11,23 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 ### Backend Structure (`backend/`)
 
 **`config.py`**
-- Contains `COUNCIL_MODELS` (list of OpenRouter model identifiers)
+- Contains `COUNCIL_MODELS` (list of `ModelConfig` objects)
 - Contains `CHAIRMAN_MODEL` (model that synthesizes final answer)
-- Uses environment variable `OPENROUTER_API_KEY` from `.env`
+- Contains `TITLE_MODEL` (fast model for generating conversation titles)
+- Uses environment variables `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` from `.env`
 - Backend runs on **port 8001** (NOT 8000 - user had another app on 8000)
+- Validates API keys on startup for configured providers
 
-**`openrouter.py`**
-- `query_model()`: Single async model query
-- `query_models_parallel()`: Parallel queries using `asyncio.gather()`
-- Returns dict with 'content' and optional 'reasoning_details'
-- Graceful degradation: returns None on failure, continues with successful responses
+**`llm_providers.py`** - Provider Abstraction Layer
+- `ModelConfig`: Dataclass with `provider`, `model`, `temperature`, `max_tokens`
+- `call_model()`: Single async model query that routes to the correct provider
+- `call_models_parallel()`: Parallel queries using `asyncio.gather()`
+- `validate_api_keys()`: Validates required API keys for configured models
+- Provider implementations:
+  - `_call_openai()`: OpenAI Chat Completions API
+  - `_call_anthropic()`: Anthropic Messages API
+  - `_call_google()`: Google Generative Language API (Gemini)
+- Returns string response or None on failure; graceful degradation
 
 **`council.py`** - The Core Logic
 - `stage1_collect_responses()`: Parallel queries to all council models
@@ -33,6 +40,7 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - `stage3_synthesize_final()`: Chairman synthesizes from all responses + rankings
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section, handles both numbered lists and plain format
 - `calculate_aggregate_rankings()`: Computes average rank position across all peer evaluations
+- `generate_conversation_title()`: Uses TITLE_MODEL for fast title generation
 
 **`storage.py`**
 - JSON-based conversation storage in `data/conversations/`
@@ -80,6 +88,13 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 
 ## Key Design Decisions
 
+### Provider Abstraction
+The `llm_providers.py` module provides a clean abstraction over different LLM providers:
+- Each provider has its own implementation handling API-specific details
+- Models are configured using `ModelConfig(provider="openai", model="gpt-4.1")`
+- The rest of the codebase doesn't need to know provider-specific details
+- Easy to add new providers (just add a new `_call_*` function)
+
 ### Stage 2 Prompt Format
 The Stage 2 prompt is very specific to ensure parseable output:
 ```
@@ -93,7 +108,7 @@ This strict format allows reliable parsing while still getting thoughtful evalua
 
 ### De-anonymization Strategy
 - Models receive: "Response A", "Response B", etc.
-- Backend creates mapping: `{"Response A": "openai/gpt-5.1", ...}`
+- Backend creates mapping: `{"Response A": "openai/gpt-4.1", ...}`
 - Frontend displays model names in **bold** for readability
 - Users see explanation that original evaluation used anonymous labels
 - This prevents bias while maintaining transparency
@@ -102,6 +117,7 @@ This strict format allows reliable parsing while still getting thoughtful evalua
 - Continue with successful responses if some models fail (graceful degradation)
 - Never fail the entire request due to single model failure
 - Log errors but don't expose to user unless all models fail
+- API keys are validated on startup with clear error messages
 
 ### UI/UX Transparency
 - All raw outputs are inspectable via tabs
@@ -123,7 +139,21 @@ All backend modules use relative imports (e.g., `from .config import ...`) not a
 All ReactMarkdown components must be wrapped in `<div className="markdown-content">` for proper spacing. This class is defined globally in `index.css`.
 
 ### Model Configuration
-Models are hardcoded in `backend/config.py`. Chairman can be same or different from council members. The current default is Gemini as chairman per user preference.
+Models are configured in `backend/config.py` using `ModelConfig` objects. Each model specifies:
+- `provider`: One of "openai", "anthropic", "google"
+- `model`: Provider-specific model name (e.g., "gpt-4.1", "claude-sonnet-4-20250514", "gemini-2.0-flash")
+- `temperature`: Sampling temperature (default 1.0)
+- `max_tokens`: Maximum response tokens (default 4096)
+
+Chairman can be same or different from council members. The current default is Gemini as chairman.
+
+### API Message Format Conversion
+Each provider has different message format requirements:
+- **OpenAI**: Standard `[{"role": "user", "content": "..."}]` format
+- **Anthropic**: System message must be a separate `system` field, not in messages array
+- **Google**: Uses `contents` with `parts` structure, `assistant` role becomes `model`
+
+The provider implementations handle these conversions transparently.
 
 ## Common Gotchas
 
@@ -131,6 +161,7 @@ Models are hardcoded in `backend/config.py`. Chairman can be same or different f
 2. **CORS Issues**: Frontend must match allowed origins in `main.py` CORS middleware
 3. **Ranking Parse Failures**: If models don't follow format, fallback regex extracts any "Response X" patterns in order
 4. **Missing Metadata**: Metadata is ephemeral (not persisted), only available in API responses
+5. **Missing API Keys**: If a provider's API key is not set, the startup will print a warning. Models from that provider will fail.
 
 ## Future Enhancement Ideas
 
@@ -140,23 +171,20 @@ Models are hardcoded in `backend/config.py`. Chairman can be same or different f
 - Model performance analytics over time
 - Custom ranking criteria (not just accuracy/insight)
 - Support for reasoning models (o1, etc.) with special handling
-
-## Testing Notes
-
-Use `test_openrouter.py` to verify API connectivity and test different model identifiers before adding to council. The script tests both streaming and non-streaming modes.
+- Add more providers (local models, other cloud providers)
 
 ## Data Flow Summary
 
 ```
 User Query
     ↓
-Stage 1: Parallel queries → [individual responses]
+Stage 1: Parallel queries via call_models_parallel() → [individual responses]
     ↓
 Stage 2: Anonymize → Parallel ranking queries → [evaluations + parsed rankings]
     ↓
 Aggregate Rankings Calculation → [sorted by avg position]
     ↓
-Stage 3: Chairman synthesis with full context
+Stage 3: Chairman synthesis with full context via call_model()
     ↓
 Return: {stage1, stage2, stage3, metadata}
     ↓

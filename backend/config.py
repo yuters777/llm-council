@@ -2,25 +2,34 @@
 
 import os
 from dotenv import load_dotenv
+from .llm_providers import ModelConfig, validate_api_keys
 
 load_dotenv()
 
-# OpenRouter API key
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-# Council members - list of OpenRouter model identifiers
+# Council members - models that generate and evaluate responses
 COUNCIL_MODELS = [
-    "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
-    "anthropic/claude-sonnet-4.5",
-    "x-ai/grok-4",
+    ModelConfig(provider="openai", model="gpt-4.1"),
+    ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
+    ModelConfig(provider="google", model="gemini-2.0-flash"),
 ]
 
-# Chairman model - synthesizes final response
-CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+# Chairman model - synthesizes the final response
+CHAIRMAN_MODEL = ModelConfig(provider="google", model="gemini-2.0-flash")
 
-# OpenRouter API endpoint
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Model used for generating conversation titles (fast and cheap)
+TITLE_MODEL = ModelConfig(provider="google", model="gemini-2.0-flash", max_tokens=100)
 
 # Data directory for conversation storage
 DATA_DIR = "data/conversations"
+
+# Validate API keys on import
+def _validate_on_startup():
+    """Validate that required API keys are present."""
+    all_models = COUNCIL_MODELS + [CHAIRMAN_MODEL, TITLE_MODEL]
+    validate_api_keys(all_models)
+
+# Run validation (can be disabled for testing)
+try:
+    _validate_on_startup()
+except ValueError as e:
+    print(f"Warning: {e}")

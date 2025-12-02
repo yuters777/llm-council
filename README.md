@@ -2,7 +2,7 @@
 
 ![llmcouncil](header.jpg)
 
-The idea of this repo is that instead of asking a question to your favorite LLM provider (e.g. OpenAI GPT 5.1, Google Gemini 3.0 Pro, Anthropic Claude Sonnet 4.5, xAI Grok 4, eg.c), you can group them into your "LLM Council". This repo is a simple, local web app that essentially looks like ChatGPT except it uses OpenRouter to send your query to multiple LLMs, it then asks them to review and rank each other's work, and finally a Chairman LLM produces the final response.
+The idea of this repo is that instead of asking a question to your favorite LLM provider (e.g. OpenAI GPT, Google Gemini, Anthropic Claude), you can group them into your "LLM Council". This repo is a simple, local web app that essentially looks like ChatGPT except it sends your query directly to multiple LLMs (OpenAI, Anthropic, and Google), asks them to review and rank each other's work, and finally a Chairman LLM produces the final response.
 
 In a bit more detail, here is what happens when you submit a query:
 
@@ -32,30 +32,50 @@ npm install
 cd ..
 ```
 
-### 2. Configure API Key
+### 2. Configure API Keys
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root with your API keys:
 
 ```bash
-OPENROUTER_API_KEY=sk-or-v1-...
+# OpenAI API key (for GPT models)
+OPENAI_API_KEY=sk-...
+
+# Anthropic API key (for Claude models)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Google API key (for Gemini models)
+GOOGLE_API_KEY=AIza...
 ```
 
-Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purchase the credits you need, or sign up for automatic top up.
+You only need keys for the providers you configure in your council. Get your API keys at:
+- OpenAI: https://platform.openai.com/api-keys
+- Anthropic: https://console.anthropic.com/settings/keys
+- Google: https://aistudio.google.com/apikey
 
 ### 3. Configure Models (Optional)
 
 Edit `backend/config.py` to customize the council:
 
 ```python
+from .llm_providers import ModelConfig
+
+# Council members - models that generate and evaluate responses
 COUNCIL_MODELS = [
-    "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
-    "anthropic/claude-sonnet-4.5",
-    "x-ai/grok-4",
+    ModelConfig(provider="openai", model="gpt-4.1"),
+    ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
+    ModelConfig(provider="google", model="gemini-2.0-flash"),
 ]
 
-CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+# Chairman model - synthesizes the final response
+CHAIRMAN_MODEL = ModelConfig(provider="google", model="gemini-2.0-flash")
 ```
+
+Available providers: `"openai"`, `"anthropic"`, `"google"`
+
+Example model names:
+- OpenAI: `"gpt-4.1"`, `"gpt-4o"`, `"gpt-4o-mini"`
+- Anthropic: `"claude-sonnet-4-20250514"`, `"claude-3-5-sonnet-20241022"`, `"claude-3-haiku-20240307"`
+- Google: `"gemini-2.0-flash"`, `"gemini-1.5-pro"`, `"gemini-1.5-flash"`
 
 ## Running the Application
 
@@ -81,7 +101,7 @@ Then open http://localhost:5173 in your browser.
 
 ## Tech Stack
 
-- **Backend:** FastAPI (Python 3.10+), async httpx, OpenRouter API
+- **Backend:** FastAPI (Python 3.10+), async httpx, direct API calls to OpenAI/Anthropic/Google
 - **Frontend:** React + Vite, react-markdown for rendering
 - **Storage:** JSON files in `data/conversations/`
 - **Package Management:** uv for Python, npm for JavaScript

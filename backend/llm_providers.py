@@ -295,18 +295,12 @@ def _format_openai_content(
             })
         elif att["type"] == "document":
             # For documents, extract text content and include inline
-            # OpenAI doesn't have native PDF support, so we include as text context
+            # OpenAI doesn't have native PDF support
             if att["media_type"] == "application/pdf":
+                # OpenAI cannot process PDFs - just add a note
                 content_parts.append({
                     "type": "text",
-                    "text": f"\n\n[Attached PDF: {att['filename']}]\n(Note: PDF content provided as base64 - please analyze if possible)"
-                })
-                # Include as image for models that support it (GPT-4V can view PDFs as images)
-                content_parts.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{att['media_type']};base64,{att['data']}"
-                    }
+                    "text": f"\n\n[Attached PDF: {att['filename']}]\n(Note: This model cannot directly view PDF content. Please base your response on the text question only, or indicate that you cannot analyze the PDF.)"
                 })
             else:
                 # For text-based documents, decode and include as text

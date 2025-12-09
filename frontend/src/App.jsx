@@ -57,11 +57,14 @@ function App() {
     setCurrentConversationId(id);
   };
 
-  const handleSendMessage = async (content) => {
+  const handleSendMessage = async (content, attachments = []) => {
     if (!currentConversationId) return;
 
     setIsLoading(true);
     try {
+      // Extract just the File objects from attachments
+      const files = attachments.map(att => att.file);
+
       // Optimistically add user message to UI
       const userMessage = { role: 'user', content };
       setCurrentConversation((prev) => ({
@@ -89,7 +92,7 @@ function App() {
         messages: [...prev.messages, assistantMessage],
       }));
 
-      // Send message with streaming
+      // Send message with streaming (include files if any)
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
         switch (eventType) {
           case 'stage1_start':
@@ -169,7 +172,7 @@ function App() {
           default:
             console.log('Unknown event type:', eventType);
         }
-      });
+      }, files);
     } catch (error) {
       console.error('Failed to send message:', error);
       // Remove optimistic messages on error

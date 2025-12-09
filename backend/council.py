@@ -1,24 +1,28 @@
 """3-stage LLM Council orchestration."""
 
-from typing import List, Dict, Any, Tuple
-from .llm_providers import call_models_parallel, call_model, ModelConfig
+from typing import List, Dict, Any, Tuple, Optional
+from .llm_providers import call_models_parallel, call_model, ModelConfig, Attachment
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, TITLE_MODEL
 
 
-async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
+async def stage1_collect_responses(
+    user_query: str,
+    attachments: Optional[List[Attachment]] = None
+) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
+        attachments: Optional list of file attachments (images, documents)
 
     Returns:
         List of dicts with 'model' and 'response' keys
     """
     messages = [{"role": "user", "content": user_query}]
 
-    # Query all models in parallel
-    responses = await call_models_parallel(COUNCIL_MODELS, messages)
+    # Query all models in parallel, passing attachments
+    responses = await call_models_parallel(COUNCIL_MODELS, messages, attachments=attachments)
 
     # Format results
     stage1_results = []
@@ -38,6 +42,8 @@ async def stage2_collect_rankings(
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
+
+    Note: Attachments are NOT passed to stage 2 - models evaluate text responses only.
 
     Args:
         user_query: The original user query
@@ -94,7 +100,7 @@ Now provide your evaluation and ranking:"""
 
     messages = [{"role": "user", "content": ranking_prompt}]
 
-    # Get rankings from all council models in parallel
+    # Get rankings from all council models in parallel (no attachments for ranking)
     responses = await call_models_parallel(COUNCIL_MODELS, messages)
 
     # Format results
@@ -118,6 +124,8 @@ async def stage3_synthesize_final(
 ) -> Dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
+
+    Note: Attachments are NOT passed to stage 3 - chairman synthesizes from text responses.
 
     Args:
         user_query: The original user query
@@ -157,7 +165,7 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Query the chairman model
+    # Query the chairman model (no attachments for synthesis)
     response = await call_model(CHAIRMAN_MODEL, messages)
 
     if response is None:
@@ -292,18 +300,22 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
+async def run_full_council(
+    user_query: str,
+    attachments: Optional[List[Attachment]] = None
+) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
 
     Args:
         user_query: The user's question
+        attachments: Optional list of file attachments (only used in Stage 1)
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
-    # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query)
+    # Stage 1: Collect individual responses (with attachments)
+    stage1_results = await stage1_collect_responses(user_query, attachments)
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -312,13 +324,13 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
             "response": "All models failed to respond. Please try again."
         }, {}
 
-    # Stage 2: Collect rankings
+    # Stage 2: Collect rankings (no attachments - evaluate text only)
     stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
 
-    # Stage 3: Synthesize final answer
+    # Stage 3: Synthesize final answer (no attachments - synthesize from text)
     stage3_result = await stage3_synthesize_final(
         user_query,
         stage1_results,

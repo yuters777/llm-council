@@ -161,3 +161,132 @@
   background: #ccc;
   border-color: #ccc;
 }
+
+/* File hint in empty state */
+.file-hint {
+  color: #999;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+/* Error message */
+.error-message {
+  background: #fff0f0;
+  border: 1px solid #ffcccc;
+  color: #cc0000;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+/* Attachment preview area */
+.attachment-preview {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  border: 1px solid #e0e0e0;
+}
+
+.attachment-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  max-width: 200px;
+}
+
+.attachment-item img {
+  max-height: 60px;
+  max-width: 100px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.document-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.document-icon {
+  font-size: 24px;
+}
+
+.document-name {
+  font-size: 13px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.remove-attachment {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: #ff4444;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.2s;
+}
+
+.remove-attachment:hover {
+  background: #cc0000;
+}
+
+/* Input row with attach button */
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.attach-button {
+  padding: 14px;
+  background: #f0f0f0;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.attach-button:hover:not(:disabled) {
+  background: #e0e0e0;
+  color: #333;
+  border-color: #c0c0c0;
+}
+
+.attach-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.attach-button svg {
+  display: block;
+}

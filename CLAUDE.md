@@ -20,17 +20,26 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 
 **`llm_providers.py`** - Provider Abstraction Layer
 - `ModelConfig`: Dataclass with `provider`, `model`, `temperature`, `max_tokens`
+- `Attachment`: TypedDict for file attachments (`type`, `media_type`, `data`, `filename`)
 - `call_model()`: Single async model query that routes to the correct provider
 - `call_models_parallel()`: Parallel queries using `asyncio.gather()`
 - `validate_api_keys()`: Validates required API keys for configured models
+- File attachment support:
+  - `_format_openai_content()`: Formats images as data URLs, PDFs as image_url
+  - `_format_anthropic_content()`: Native image and PDF document support
+  - `_format_google_parts()`: Inline data format for images and PDFs
 - Provider implementations:
-  - `_call_openai()`: OpenAI Chat Completions API
-  - `_call_anthropic()`: Anthropic Messages API
-  - `_call_google()`: Google Generative Language API (Gemini)
+  - `_call_openai()`: OpenAI Chat Completions API (with vision support)
+  - `_call_anthropic()`: Anthropic Messages API (with image/PDF support)
+  - `_call_google()`: Google Generative Language API (Gemini with multimodal)
+- Supported file types:
+  - Images: jpg, jpeg, png, gif, webp
+  - Documents: pdf, txt, csv, json, md
+- Max file size: 20MB per file
 - Returns string response or None on failure; graceful degradation
 
 **`council.py`** - The Core Logic
-- `stage1_collect_responses()`: Parallel queries to all council models
+- `stage1_collect_responses(user_query, attachments)`: Parallel queries to all council models (with optional attachments)
 - `stage2_collect_rankings()`:
   - Anonymizes responses as "Response A, B, C, etc."
   - Creates `label_to_model` mapping for de-anonymization
@@ -51,6 +60,8 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 **`main.py`**
 - FastAPI app with CORS enabled for localhost:5173 and localhost:3000
 - POST `/api/conversations/{id}/message` returns metadata in addition to stages
+- Accepts optional `attachments` array in request body (base64-encoded files)
+- `AttachmentModel`: Pydantic model with validation for media_type and file size
 - Metadata includes: label_to_model mapping and aggregate_rankings
 
 ### Frontend Structure (`frontend/src/`)
@@ -64,6 +75,18 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - Multiline textarea (3 rows, resizable)
 - Enter to send, Shift+Enter for new line
 - User messages wrapped in markdown-content class for padding
+- File upload support:
+  - Attach button (paperclip icon) for file selection
+  - Preview area for attached files (thumbnails for images, icons for documents)
+  - Remove button on each attachment
+  - File validation (type, size) with error messages
+
+**`api.js`**
+- `sendMessage(conversationId, content, files)`: Sends message with optional file attachments
+- `sendMessageStream(conversationId, content, onEvent, files)`: Streaming version
+- `validateFile(file)`: Client-side validation for file type and size
+- `fileToBase64(file)`: Converts File to base64 string
+- Supported types exported for UI validation
 
 **`components/Stage1.jsx`**
 - Tab view of individual model responses
@@ -113,11 +136,24 @@ This strict format allows reliable parsing while still getting thoughtful evalua
 - Users see explanation that original evaluation used anonymous labels
 - This prevents bias while maintaining transparency
 
+### File Attachment Architecture
+Attachments flow through the system as follows:
+1. Frontend converts files to base64 and sends with message
+2. Backend validates file type and size via Pydantic validators
+3. Stage 1 passes attachments to all council models
+4. Each provider formats attachments according to its API:
+   - **OpenAI**: `image_url` with data URLs, PDFs also as image_url
+   - **Anthropic**: Native `image` and `document` content blocks
+   - **Google**: `inlineData` parts with mimeType
+5. Stages 2 and 3 do NOT receive attachments (evaluate text responses only)
+6. Text-based documents (txt, csv, json, md) are decoded and included inline
+
 ### Error Handling Philosophy
 - Continue with successful responses if some models fail (graceful degradation)
 - Never fail the entire request due to single model failure
 - Log errors but don't expose to user unless all models fail
 - API keys are validated on startup with clear error messages
+- Invalid attachments are skipped with a warning, not rejected
 
 ### UI/UX Transparency
 - All raw outputs are inspectable via tabs
@@ -176,15 +212,15 @@ The provider implementations handle these conversions transparently.
 ## Data Flow Summary
 
 ```
-User Query
+User Query + Optional Attachments
     ↓
-Stage 1: Parallel queries via call_models_parallel() → [individual responses]
+Stage 1: Parallel queries via call_models_parallel() WITH attachments → [individual responses]
     ↓
-Stage 2: Anonymize → Parallel ranking queries → [evaluations + parsed rankings]
+Stage 2: Anonymize → Parallel ranking queries (text only) → [evaluations + parsed rankings]
     ↓
 Aggregate Rankings Calculation → [sorted by avg position]
     ↓
-Stage 3: Chairman synthesis with full context via call_model()
+Stage 3: Chairman synthesis (text only) via call_model()
     ↓
 Return: {stage1, stage2, stage3, metadata}
     ↓
@@ -192,3 +228,25 @@ Frontend: Display with tabs + validation UI
 ```
 
 The entire flow is async/parallel where possible to minimize latency.
+
+## Attachment Format (API Request)
+
+```json
+{
+  "content": "What's in this image?",
+  "attachments": [
+    {
+      "type": "image",
+      "media_type": "image/png",
+      "data": "<base64-encoded-content>",
+      "filename": "screenshot.png"
+    },
+    {
+      "type": "document",
+      "media_type": "application/pdf",
+      "data": "<base64-encoded-content>",
+      "filename": "report.pdf"
+    }
+  ]
+}
+```

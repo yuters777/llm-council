@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import { validateFile, SUPPORTED_IMAGE_TYPES } from '../api';
 import './ChatInterface.css';
 
 export default function ChatInterface({
@@ -11,7 +12,10 @@ export default function ChatInterface({
   isLoading,
 }) {
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -21,11 +25,21 @@ export default function ChatInterface({
     scrollToBottom();
   }, [conversation]);
 
+  // Clear error after 5 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
-      onSendMessage(input);
+    if ((input.trim() || attachments.length > 0) && !isLoading) {
+      // Pass both text and attachments to parent
+      onSendMessage(input, attachments);
       setInput('');
+      setAttachments([]);
     }
   };
 
@@ -36,6 +50,59 @@ export default function ChatInterface({
       handleSubmit(e);
     }
   };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    const newAttachments = [];
+
+    for (const file of files) {
+      const validation = validateFile(file);
+      if (!validation.valid) {
+        setError(validation.error);
+        continue;
+      }
+
+      // Create preview URL for images
+      const isImage = SUPPORTED_IMAGE_TYPES.includes(file.type);
+      const preview = isImage ? URL.createObjectURL(file) : null;
+
+      newAttachments.push({
+        file,
+        preview,
+        name: file.name,
+        type: file.type,
+        isImage
+      });
+    }
+
+    setAttachments(prev => [...prev, ...newAttachments]);
+
+    // Reset file input
+    e.target.value = '';
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments(prev => {
+      const newAttachments = [...prev];
+      // Revoke object URL to prevent memory leak
+      if (newAttachments[index].preview) {
+        URL.revokeObjectURL(newAttachments[index].preview);
+      }
+      newAttachments.splice(index, 1);
+      return newAttachments;
+    });
+  };
+
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => {
+      attachments.forEach(att => {
+        if (att.preview) {
+          URL.revokeObjectURL(att.preview);
+        }
+      });
+    };
+  }, []);
 
   if (!conversation) {
     return (
@@ -55,6 +122,7 @@ export default function ChatInterface({
           <div className="empty-state">
             <h2>Start a conversation</h2>
             <p>Ask a question to consult the LLM Council</p>
+            <p className="file-hint">You can also attach images or documents</p>
           </div>
         ) : (
           conversation.messages.map((msg, index) => (
@@ -122,22 +190,83 @@ export default function ChatInterface({
 
       {conversation.messages.length === 0 && (
         <form className="input-form" onSubmit={handleSubmit}>
-          <textarea
-            className="message-input"
-            placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-            rows={3}
-          />
-          <button
-            type="submit"
-            className="send-button"
-            disabled={!input.trim() || isLoading}
-          >
-            Send
-          </button>
+          {/* Error message */}
+          {error && (
+            <div className="error-message">
+              {error}
+            </div>
+          )}
+
+          {/* Attachment preview area */}
+          {attachments.length > 0 && (
+            <div className="attachment-preview">
+              {attachments.map((att, i) => (
+                <div key={i} className="attachment-item">
+                  {att.isImage ? (
+                    <img src={att.preview} alt={att.name} />
+                  ) : (
+                    <div className="document-preview">
+                      <span className="document-icon">
+                        {att.type === 'application/pdf' ? '📄' : '📝'}
+                      </span>
+                      <span className="document-name">{att.name}</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="remove-attachment"
+                    onClick={() => removeAttachment(i)}
+                    aria-label="Remove attachment"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="input-row">
+            {/* Hidden file input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              multiple
+              accept="image/jpeg,image/png,image/gif,image/webp,.pdf,.txt,.csv,.json,.md"
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+            />
+
+            {/* Attachment button */}
+            <button
+              type="button"
+              className="attach-button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+              title="Attach files"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+              </svg>
+            </button>
+
+            <textarea
+              className="message-input"
+              placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
+              rows={3}
+            />
+
+            <button
+              type="submit"
+              className="send-button"
+              disabled={(!input.trim() && attachments.length === 0) || isLoading}
+            >
+              Send
+            </button>
+          </div>
         </form>
       )}
     </div>

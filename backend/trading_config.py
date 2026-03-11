@@ -44,7 +44,7 @@ TRADING_MODELS: dict[str, dict] = {
         "weight": 0.25,
         "config": ModelConfig(
             provider="google",
-            model="gemini-3-pro-preview",
+            model="gemini-2.5-flash",
             max_tokens=1000,
             temperature=0.3,
         ),

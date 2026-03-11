@@ -469,6 +469,11 @@ async def _call_openai(
         "Content-Type": "application/json",
     }
 
+    # Project-scoped API keys require this header
+    openai_project_id = os.getenv("OPENAI_PROJECT_ID", "")
+    if openai_project_id:
+        headers["OpenAI-Project"] = openai_project_id
+
     # Format messages with attachments
     formatted_messages = []
     for msg in messages:

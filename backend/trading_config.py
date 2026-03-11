@@ -26,7 +26,7 @@ TRADING_MODELS: dict[str, dict] = {
         "weight": 0.40,
         "config": ModelConfig(
             provider="anthropic",
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6-20250415",
             max_tokens=1000,
             temperature=0.3,
         ),

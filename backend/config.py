@@ -9,7 +9,7 @@ load_dotenv()
 # Council members - models that generate and evaluate responses
 COUNCIL_MODELS = [
     ModelConfig(provider="openai", model="gpt-4.1"),
-    ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
+    ModelConfig(provider="anthropic", model="claude-sonnet-4-6-20250415"),
     ModelConfig(provider="google", model="gemini-2.0-flash"),
 ]
 

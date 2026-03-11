@@ -100,7 +100,7 @@ A module-level `httpx.AsyncClient` is lazily created via `get_http_client()`:
 
 **Google (Gemini)** — Role `assistant` maps to `model`. System instructions go in a top-level `systemInstruction.parts` field. Uses URL template with model name: `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`. API key is a query parameter, not a header.
 
-**OpenAI** — Standard Chat Completions format. PDFs sent as both a text note and an `image_url` data URL. Uses `Authorization: Bearer` header.
+**OpenAI** — Standard Chat Completions format. PDFs sent as both a text note and an `image_url` data URL. Uses `Authorization: Bearer` header and `OpenAI-Project` header when the `OPENAI_PROJECT_ID` environment variable is set.
 
 ### File Constants
 
@@ -405,7 +405,7 @@ All models use `ConfigDict(populate_by_name=True)`.
 
 | Setting | Value |
 |---------|-------|
-| `COUNCIL_MODELS` | `[openai/gpt-4.1, anthropic/claude-sonnet-4-20250514, google/gemini-2.0-flash]` (temp=1.0, max_tokens=4096) |
+| `COUNCIL_MODELS` | `[openai/gpt-4.1, anthropic/claude-sonnet-4-6-20250415, google/gemini-2.0-flash]` (temp=1.0, max_tokens=4096) |
 | `CHAIRMAN_MODEL` | `google/gemini-2.0-flash` (temp=1.0, max_tokens=4096) |
 | `TITLE_MODEL` | `google/gemini-2.0-flash` (temp=1.0, max_tokens=100) |
 | `DATA_DIR` | `"data/conversations"` |
@@ -427,9 +427,11 @@ Validates API keys on import via `_validate_on_startup()`. Catches `ValueError` 
 
 | Key | Provider | Model | Weight | Temperature | Max Tokens |
 |-----|----------|-------|--------|-------------|------------|
-| `claude` | anthropic | `claude-sonnet-4-20250514` | 0.40 | 0.3 | 1000 |
+| `claude` | anthropic | `claude-sonnet-4-6-20250415` | 0.40 | 0.3 | 1000 |
 | `gpt` | openai | `gpt-4.1` | 0.35 | 0.3 | 1000 |
-| `gemini` | google | `gemini-3-pro-preview` | 0.25 | 0.3 | 1000 |
+| `gemini` | google | `gemini-2.5-pro` | 0.25 | 0.3 | 1000 |
+
+> **Note:** `gemini-3-pro-preview` was shut down by Google on March 9, 2026. The trading council now uses `gemini-2.5-pro` as a replacement.
 
 ### Environment Variables
 

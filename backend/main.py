@@ -1,6 +1,7 @@
 """FastAPI backend for LLM Council."""
 
 import base64
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -15,6 +16,11 @@ import asyncio
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 from .llm_providers import close_http_client, Attachment, MAX_FILE_SIZE_BYTES, SUPPORTED_IMAGE_TYPES, SUPPORTED_DOCUMENT_TYPES
+from .trading_models import MarketSnapshot, TradingDecision
+from .trading_council import analyze_trading
+from .trading_config import TRADING_ENABLED
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -113,7 +119,7 @@ def convert_attachments(attachments: Optional[List[AttachmentModel]]) -> Optiona
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "ok", "service": "LLM Council API"}
+    return {"status": "ok", "service": "LLM Council API", "trading_enabled": TRADING_ENABLED}
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
@@ -263,6 +269,25 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             "Connection": "keep-alive",
         }
     )
+
+
+@app.post("/api/trading/analyze", response_model=TradingDecision)
+async def trading_analyze(snapshot: MarketSnapshot):
+    """Analyze market snapshot through the Trading Council.
+
+    Accepts a MarketSnapshot from the Python trading engine,
+    runs it through 3 LLMs in parallel, and returns a consensus
+    TradingDecision with individual votes and alert text.
+    """
+    if not TRADING_ENABLED:
+        raise HTTPException(status_code=503, detail="Trading Council is disabled")
+
+    try:
+        result = await analyze_trading(snapshot)
+        return result
+    except Exception as e:
+        logger.exception("Trading analysis failed")
+        raise HTTPException(status_code=500, detail=f"Trading analysis failed: {str(e)}")
 
 
 if __name__ == "__main__":

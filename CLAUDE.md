@@ -250,3 +250,87 @@ The entire flow is async/parallel where possible to minimize latency.
   ]
 }
 ```
+
+## Trading Council Mode
+
+### Purpose
+
+A programmatic endpoint (`POST /api/trading/analyze`) for a Python trading engine to get consensus-based trading decisions from multiple LLMs. This is a machine-to-machine API — it does not affect the web UI or chat functionality.
+
+### New Files
+
+- **`backend/trading_models.py`** — Pydantic v2 models for `MarketSnapshot` (input) and `TradingDecision` (output), plus all nested schemas (OverrideData, GeoStressData, EmaGateData, CryptoOverrideData, CrossAssetData, SessionData, ModelVote, ConsensusResult, TradingMeta)
+- **`backend/trading_config.py`** — Trading-specific configuration: `TRADING_MODELS` (3 weighted council members), `SKIP_STAGE2_TRIGGERS`, timeouts, fallback defaults
+- **`backend/trading_council.py`** — Core logic: prompt building, 3-tier response parsing, consensus aggregation, Telegram alert formatting, and the `analyze_trading()` orchestrator
+- **`backend/prompts/trading/`** — 6 Markdown prompt templates (system_base, override_change, geostress_alert, morning_briefing, conflicting_signals, unusual_pattern)
+- **`backend/tests/test_trading.py`** — 18 pytest tests covering parsing, consensus, pipeline, models, and alerts
+
+### API Endpoint
+
+```
+POST /api/trading/analyze
+Content-Type: application/json
+Body: MarketSnapshot JSON
+
+Returns: TradingDecision JSON
+```
+
+### Call Flow
+
+```
+MarketSnapshot (from Python engine)
+    ↓
+build_prompts() → system prompt + user message with snapshot data
+    ↓
+call_models_parallel() → 3 models (Claude, GPT, Gemini) respond in parallel
+    ↓
+parse_trading_response() → 3-tier fallback: direct JSON → markdown block → regex → HOLD fallback
+    ↓
+Stage 2 peer adjustment (skipped for time-sensitive triggers)
+    ↓
+aggregate_decisions() → weighted consensus (claude=0.40, gpt=0.35, gemini=0.25)
+    ↓
+format_telegram_alert() → < 300 char alert with emoji prefix
+    ↓
+TradingDecision (returned to caller)
+```
+
+### Trigger Types
+
+| Trigger | Skips Stage 2 | Description |
+|---------|--------------|-------------|
+| `OVERRIDE_STATE_CHANGE` | Yes | Override regime transition |
+| `GEOSTRESS_ALERT` | Yes | Cross-asset stress detected |
+| `UNUSUAL_PATTERN` | Yes | Anomalous market pattern |
+| `CONFLICTING_SIGNALS` | No | Contradictory framework signals |
+| `MORNING_BRIEFING` | No | Daily pre-market analysis |
+| `EARNINGS_PROXIMITY` | No | Earnings event approaching |
+
+### Configuration
+
+- **Models**: 3 council members in `TRADING_MODELS` dict, each with a weight and `ModelConfig`
+- **Temperature**: 0.3 (deterministic analysis, not creative writing)
+- **Timeout**: 30 seconds per call
+- **Fallback**: On parse failure → HOLD with 0.3 confidence (safety net)
+- **Feature toggle**: `TRADING_COUNCIL_ENABLED` env var (default: true)
+
+### JSON Parsing Fallback Strategy
+
+1. **Tier 1**: Direct `json.loads()` on raw response
+2. **Tier 2**: Extract JSON from `` ```json ... ``` `` markdown code block
+3. **Tier 3**: Regex extraction of `"decision"`, `"confidence"`, etc.
+4. **Fallback**: `ModelVote(decision="HOLD", confidence=0.3)` — never act on unparseable output
+
+### Cost Estimate
+
+~$2-5/day for 5-15 calls. Approximate per-call rates (input/output per MTok):
+- Claude: $3 / $15
+- GPT: $2 / $8
+- Gemini: $1.25 / $10
+
+### Integration
+
+```
+Layer 1 Python Engine → POST /api/trading/analyze → Trading Council → TradingDecision
+                                                                    → alert_text → Telegram
+```

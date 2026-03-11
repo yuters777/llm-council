@@ -99,6 +99,58 @@ npm run dev
 
 Then open http://localhost:5173 in your browser.
 
+## Trading Council Mode
+
+In addition to the interactive web UI, LLM Council includes a **programmatic trading analysis endpoint** designed for machine-to-machine calls from a Python trading engine. This feature does not affect the web UI or chat functionality.
+
+### How to Enable
+
+1. Set API keys in `.env` (same keys used by the chat council):
+   ```bash
+   OPENAI_API_KEY=sk-...
+   ANTHROPIC_API_KEY=sk-ant-...
+   GOOGLE_API_KEY=AIza...
+   ```
+
+2. Optionally toggle with `TRADING_COUNCIL_ENABLED=true` (enabled by default).
+
+### Usage
+
+Send a `MarketSnapshot` JSON to `POST /api/trading/analyze`:
+
+```bash
+curl -X POST http://localhost:8001/api/trading/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "timestamp": "2026-03-11T16:45:00+02:00",
+    "trigger_type": "OVERRIDE_STATE_CHANGE",
+    "trigger_details": "Override ON -> OFF_WARNING",
+    "override": {"state": "OFF_WARNING", "previous_state": "ON", "z15": -0.45, "z30": -0.82, "vix": 25.15, "rebound_pct": 8.2},
+    "ema_gate": {"state_4h": "BEAR", "state_m5": "PULLBACK", "trend_score": 0.32},
+    "geostress": {"active": false, "score": 1.2},
+    "cross_asset": {"btc": {"price": 69500, "change_1h_pct": -0.8}, "coin_leading": true},
+    "session": {"zone": "POWER_HOUR", "zone_reliability": "HIGH", "minutes_to_close": 55}
+  }'
+```
+
+### Response (abbreviated)
+
+```json
+{
+  "timestamp": "2026-03-11T16:45:00+02:00",
+  "trigger_type": "OVERRIDE_STATE_CHANGE",
+  "decision": "HOLD",
+  "confidence": 0.65,
+  "reasoning": "Council UNANIMOUS consensus: HOLD. ...",
+  "council_votes": {"claude": {...}, "gpt": {...}, "gemini": {...}},
+  "consensus_strength": "UNANIMOUS",
+  "alert_text": "🔴 Override State Change\nHOLD (UNANIMOUS, conf 65%) | VIX 25.2",
+  "meta": {"total_tokens": 1234, "cost_usd": 0.002, "latency_ms": 3500, "models_used": ["claude", "gpt", "gemini"]}
+}
+```
+
+Three models (Claude Sonnet, GPT-4.1, Gemini Pro) analyze the snapshot in parallel, vote on a trading decision, and return a weighted consensus with a Telegram-ready alert.
+
 ## Tech Stack
 
 - **Backend:** FastAPI (Python 3.10+), async httpx, direct API calls to OpenAI/Anthropic/Google
